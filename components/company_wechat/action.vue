@@ -13,8 +13,8 @@
 						<el-icon @click="modalClose"><CircleCloseFilled /></el-icon>
 					</div>
 				</template>
-
-				<div class="modal-text">
+				<!--文字-->
+				<div class="modal-text" v-if="dialog.type === '文字'">
 					<div class="modal-text-head">
 						<el-tooltip effect="light">
 							<template #content>
@@ -30,7 +30,46 @@
 					</div>
 					<div class="modal-text-body" id="editor" contenteditable></div>
 				</div>
+				<!--链接-->
+				<div class="modal-link" v-if="dialog.type === '链接'">
+					<el-form
+						ref="linkFormRef"
+						:model="linkForm.model"
+						:rules="linkForm.rules"
+						label-width="60px"
+					>
+						<el-form-item label="链接" prop="link">
+							<el-input v-model="linkForm.model.link"></el-input>
+						</el-form-item>
+						<el-form-item label="标题" prop="title">
+							<el-input v-model="linkForm.model.title"></el-input>
+						</el-form-item>
+						<el-form-item label="描述" prop="des" class="modal-link-form-item">
+							<el-input
+								v-model="linkForm.model.des"
+								type="textarea"
+								:rows="3"
+							></el-input>
+							<el-upload
+								class="modal-link-form-item-right"
+								action="https://jsonplaceholder.typicode.com/posts/"
+								:show-file-list="false"
+								:on-change="upload"
+							>
+								<el-icon v-if="linkForm.model.loading"><Loading /></el-icon>
+								<div v-else>
+									<el-avatar
+										v-if="linkForm.model.img"
+										:size="40"
+										:src="linkForm.model.img"
+									></el-avatar>
 
+									<el-icon v-else><Plus /></el-icon>
+								</div>
+							</el-upload>
+						</el-form-item>
+					</el-form>
+				</div>
 				<template v-slot:footer>
 					<el-button @click="modalClose">取消</el-button>
 					<el-button @click="modalConfirm">确定</el-button>
@@ -41,16 +80,15 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, reactive, ref, onMounted } from 'vue'
-import { Plus, CircleCloseFilled } from '@element-plus/icons-vue'
+import { defineComponent, reactive, ref, onMounted, nextTick, watch } from 'vue'
+import { Plus, CircleCloseFilled, Loading } from '@element-plus/icons-vue'
 import { SmileOutlined } from '@ant-design/icons-vue'
 import Emoji from './emoji.vue'
 export default defineComponent({
-	components: { Emoji, CircleCloseFilled, SmileOutlined, Plus },
-	setup() {
+	components: { Loading, Emoji, CircleCloseFilled, SmileOutlined, Plus },
+	setup(props: any, { emit }) {
 		const types = ['文字', '图片', '视频', '文件', '链接', '小程序', '视频号', '素材库']
 		const dialog = reactive({ type: '文字', visible: false })
-		let editor = null as any
 		// 表情
 		const emotions = [
 			'微笑',
@@ -159,12 +197,51 @@ export default defineComponent({
 			'左太极',
 			'右太极'
 		]
-		const modalOpen = (type: any) => {
-			dialog.visible = true
+		const linkFormRef = ref()
+		const linkForm = reactive({
+			rules: {
+				link: [
+					{
+						required: true,
+						message: '请输入链接'
+					}
+				],
+				title: [
+					{
+						required: true,
+						message: '请输入标提'
+					}
+				],
+				des: [
+					{
+						required: true,
+						message: '请输入描述'
+					}
+				]
+			},
+			model: {
+				link: undefined,
+				title: undefined,
+				des: undefined,
+				img: undefined,
+				loading: false
+			}
+		})
+		const wordIndex = ref()
+		const modalOpen = (type: any, value: any, i: any) => {
 			dialog.type = type
-
+			wordIndex.value = i
 			switch (type) {
 				case '文字':
+					dialog.visible = true
+					nextTick(() => value && textInit(value))
+					break
+				case '链接':
+					dialog.visible = true
+					nextTick(() => {
+						linkFormRef.value.resetFields()
+					})
+
 					break
 			}
 		}
@@ -172,12 +249,100 @@ export default defineComponent({
 			dialog.visible = false
 		}
 		const modalConfirm = () => {
+			switch (dialog.type) {
+				case '文字':
+					emit('getText', { text: htmlFormat(), index: wordIndex.value })
+					dialog.visible = false
+					break
+				case '链接':
+					linkFormConfirm(linkFormRef)
+					break
+			}
+		}
+		const linkFormConfirm = (form: any) => {
+			if (!form.value) return
+			form.value.validate((valid: any) => {
+				if (valid) {
+					console.log(linkForm.model)
+				} else {
+					return false
+				}
+			})
+		}
+		const upload = (file: any, fileList: any) => {
+			linkForm.model.loading = true
+			if (file.status === 'success') {
+				linkForm.model.loading = false
+			}
+		}
+		//文本初始化
+		const textInit = (value: any) => {
+			const editor = document.querySelector('#editor') as any
+			let html = ''
+			html = tagCreate('[随机表情]', value)
+			html = tagCreate('[称呼/昵称]', html)
+			html = emojiCreate(html)
+			editor.innerHTML = html
+		}
+		const tagCreate = (target: any, word: any) => {
+			while (word.includes(target)) {
+				word = word.replace(
+					target,
+					`<div class="modal-text-tag" contenteditable="false">${target.slice(
+						1,
+						target.length - 1
+					)}<span onclick="const editor = document.querySelector('#editor');editor.removeChild(this.parentNode);">×</span></div>`
+				)
+			}
+			return word
+		}
+		const emojiCreate = (word: any) => {
+			for (let emojiIndex in emotions) {
+				while (word.includes(`[${emotions[emojiIndex]}]`)) {
+					word = word.replace(
+						`[${emotions[emojiIndex]}]`,
+						`<img src="https://res.wx.qq.com/mpres/htmledition/images/icon/emotion/${emojiIndex}.gif">`
+					)
+				}
+			}
+			return word
+		}
+		//编辑器html文本格式化
+		const htmlFormat = () => {
 			const editor = document.querySelector('#editor') as any
 
 			let word = editor.innerHTML
 			//图片处理
 			word = imgRegExpReplace(word)
-			console.log('===>', word)
+			//随机表情
+			word = tagReplace(
+				word,
+				'<div class="modal-text-tag" contenteditable="false">随机表情<span>×</span></div>',
+				'[随机表情]'
+			)
+			word = tagReplace(
+				word,
+				`<div class="modal-text-tag" contenteditable="false">随机表情<span onclick="const editor = document.querySelector('#editor');editor.removeChild(this.parentNode);">×</span></div>`,
+				'[随机表情]'
+			)
+			//称呼/昵称
+			word = tagReplace(
+				word,
+				'<div class="modal-text-tag" contenteditable="false">称呼/昵称<span>×</span></div>',
+				'[称呼/昵称]'
+			)
+			word = tagReplace(
+				word,
+				`<div class="modal-text-tag" contenteditable="false">称呼/昵称<span onclick="const editor = document.querySelector('#editor');editor.removeChild(this.parentNode);">×</span></div>`,
+				'[称呼/昵称]'
+			)
+			return word
+		}
+		const tagReplace = (word: any, target: any, text: any) => {
+			while (word.includes(target)) {
+				word = word.replace(target, text)
+			}
+			return word
 		}
 		const imgRegExpReplace = (wordTarget: any) => {
 			//.查找单个字符
@@ -205,6 +370,7 @@ export default defineComponent({
 			return wordTarget
 		}
 		const addTextTag = (tagName: any) => {
+			const editor = document.querySelector('#editor') as any
 			//获取选择对象
 			const selection = window.getSelection() as any
 			//获取选区
@@ -218,6 +384,12 @@ export default defineComponent({
 				selection.focusNode.parentNode.id === 'editor'
 			) {
 				close.innerText = '×'
+				//绑定删除标签节点事件
+				close.onclick = function () {
+					const parentNode = (this as any).parentNode
+					editor.removeChild(parentNode)
+				}
+
 				tag.className = 'modal-text-tag'
 				tag.innerText = tagName
 				tag.appendChild(close)
@@ -227,7 +399,6 @@ export default defineComponent({
 				selection.collapseToEnd()
 			}
 		}
-		const removeTextTag = (item: any, i: any) => {}
 		const addEmoji = (emoji: any) => {
 			//获取选择对象
 			const selection = window.getSelection() as any
@@ -250,12 +421,15 @@ export default defineComponent({
 		return {
 			types,
 			dialog,
+			linkForm,
+			linkFormRef,
+			upload,
 			modalOpen,
 			modalClose,
 			modalConfirm,
 			addTextTag,
-			removeTextTag,
-			addEmoji
+			addEmoji,
+			linkFormConfirm
 		}
 	}
 })
@@ -332,6 +506,33 @@ export default defineComponent({
 						cursor: pointer;
 						margin: 0 4px;
 						user-select: none;
+					}
+				}
+			}
+			.modal-link {
+				.modal-link-form-item {
+					&:nth-last-child(1) {
+						.el-form-item__content {
+							display: flex;
+							.el-textarea {
+								width: 74%;
+							}
+							.modal-link-form-item-right {
+								height: 100%;
+								background: #ffffff;
+								border-radius: 4px;
+								border: 1px solid #cacaca;
+								flex-grow: 1;
+								margin-left: 15px;
+								.el-upload {
+									width: 100%;
+									height: 100%;
+									display: flex;
+									align-items: center;
+									justify-content: center;
+								}
+							}
+						}
 					}
 				}
 			}
