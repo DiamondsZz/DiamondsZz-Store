@@ -6,7 +6,12 @@
 			>
 		</div>
 		<div class="modal">
-			<el-dialog width="432px" v-model="dialog.visible" :show-close="false">
+			<el-dialog
+				width="432px"
+				v-model="dialog.visible"
+				:show-close="false"
+				:close-on-click-modal="false"
+			>
 				<template v-slot:title>
 					<div>添加{{ dialog.type }}</div>
 					<div>
@@ -23,9 +28,7 @@
 							<SmileOutlined />
 						</el-tooltip>
 
-						<el-tag @click="addTextTag('随机表情')" contenteditable="false">
-							随机表情
-						</el-tag>
+						<el-tag @click="addTextTag('随机表情')"> 随机表情 </el-tag>
 						<el-tag @click="addTextTag('称呼/昵称')">称呼/昵称</el-tag>
 					</div>
 					<div class="modal-text-body" id="editor" contenteditable></div>
@@ -228,18 +231,21 @@ export default defineComponent({
 			}
 		})
 		const wordIndex = ref()
-		const modalOpen = (type: any, value: any, i: any) => {
+		const modalOpen = (type: any, val: any, i: any) => {
 			dialog.type = type
 			wordIndex.value = i
+
 			switch (type) {
 				case '文字':
 					dialog.visible = true
-					nextTick(() => value && textInit(value))
+					nextTick(() => val && textInit(val))
 					break
 				case '链接':
 					dialog.visible = true
 					nextTick(() => {
 						linkFormRef.value.resetFields()
+						//这里进行解构处理,linkForm.model = val会有响应式依赖问题
+						val && (linkForm.model = { ...val })
 					})
 
 					break
@@ -256,6 +262,7 @@ export default defineComponent({
 					break
 				case '链接':
 					linkFormConfirm(linkFormRef)
+					dialog.visible = false
 					break
 			}
 		}
@@ -263,7 +270,7 @@ export default defineComponent({
 			if (!form.value) return
 			form.value.validate((valid: any) => {
 				if (valid) {
-					console.log(linkForm.model)
+					emit('getLink', { model: { ...linkForm.model }, index: wordIndex.value })
 				} else {
 					return false
 				}
@@ -373,47 +380,51 @@ export default defineComponent({
 			const editor = document.querySelector('#editor') as any
 			//获取选择对象
 			const selection = window.getSelection() as any
-			//获取选区
-			const range = selection.getRangeAt(0)
-			//创建tag
-			const tag = document.createElement('div')
-			const close = document.createElement('span')
+			if (selection.type === 'Caret') {
+				//获取选区
+				const range = selection.getRangeAt(0)
+				//创建tag
+				const tag = document.createElement('div')
+				const close = document.createElement('span')
 
-			if (
-				selection.focusNode.id === 'editor' ||
-				selection.focusNode.parentNode.id === 'editor'
-			) {
-				close.innerText = '×'
-				//绑定删除标签节点事件
-				close.onclick = function () {
-					const parentNode = (this as any).parentNode
-					editor.removeChild(parentNode)
+				if (
+					selection.focusNode.id === 'editor' ||
+					selection.focusNode.parentNode.id === 'editor'
+				) {
+					close.innerText = '×'
+					//绑定删除标签节点事件
+					close.onclick = function () {
+						const parentNode = (this as any).parentNode
+						editor.removeChild(parentNode)
+					}
+
+					tag.className = 'modal-text-tag'
+					tag.innerText = tagName
+					tag.appendChild(close)
+					tag.setAttribute('contenteditable', 'false')
+					range.insertNode(tag)
+					//将当前的选区折叠到末尾
+					selection.collapseToEnd()
 				}
-
-				tag.className = 'modal-text-tag'
-				tag.innerText = tagName
-				tag.appendChild(close)
-				tag.setAttribute('contenteditable', 'false')
-				range.insertNode(tag)
-				//将当前的选区折叠到末尾
-				selection.collapseToEnd()
 			}
 		}
 		const addEmoji = (emoji: any) => {
 			//获取选择对象
 			const selection = window.getSelection() as any
-			//获取选区
-			const range = selection.getRangeAt(0)
-			//创建表情
-			const img = document.createElement('img')
-			if (
-				selection.focusNode.id === 'editor' ||
-				selection.focusNode.parentNode.id === 'editor'
-			) {
-				img.src = emoji
-				range.insertNode(img)
-				//将当前的选区折叠到末尾
-				selection.collapseToEnd()
+			if (selection.type === 'Caret') {
+				//获取选区
+				const range = selection.getRangeAt(0)
+				//创建表情
+				const img = document.createElement('img')
+				if (
+					selection.focusNode.id === 'editor' ||
+					selection.focusNode.parentNode.id === 'editor'
+				) {
+					img.src = emoji
+					range.insertNode(img)
+					//将当前的选区折叠到末尾
+					selection.collapseToEnd()
+				}
 			}
 		}
 
@@ -437,6 +448,7 @@ export default defineComponent({
 <style lang="less" scoped>
 .action {
 	.el-button {
+		margin: 0 10px 10px 0;
 	}
 }
 .modal {
